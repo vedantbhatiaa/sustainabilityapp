@@ -121,6 +121,11 @@ def page_benchmarking():
             q25, med, q75 = (float(np.percentile(vals, p)) for p in [25, 50, 75])
             lo,  hi       = float(np.percentile(vals, 10)), float(np.percentile(vals, 90))
         else:
+            # FALLBACK when <3 peer submissions: assume ±15% and ±30% margins around company value
+            # Methodology: 25th percentile = 85% of value, median = 100%, 75th = 115%
+            #              10th percentile = 70% of value, 90th = 130%
+            # TODO: Document the official benchmark methodology and data source for this fallback
+            # TODO: Post-Azure, query live sector percentiles from SQL instead of using fixed percentages
             q25, med, q75, lo, hi = val*.85, val, val*1.15, val*.7, val*1.3
         b = BenchmarkResult(col, val, q25, med, q75, unit, lb)
         b._lo, b._hi, b._vals = lo, hi, vals

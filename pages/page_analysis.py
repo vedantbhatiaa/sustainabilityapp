@@ -54,12 +54,6 @@ from ui_components import (
     GREEN, AMBER, RED, NAVY, BG, BORDER, TEXT, MUTED,
     CAT_CO2, CAT_ENERGY, CAT_WATER, CAT_WASTE, CAT_RENEW,
 )
-from components.render_template_table import render_template_table
-from components.render_electricity_tab import render_electricity_tab
-from components.render_waste_tab import render_waste_tab
-from components.render_people_tab import _render_people_governance_tab
-from components.render_qualitative_tab import render_qualitative_tab
-from components.render_conversion_tab import render_conversion_tab
 
 
 def page_analysis():

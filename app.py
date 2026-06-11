@@ -108,6 +108,10 @@ def _write_verification_status(company: str, year: int, status: str) -> None:
 # SUPPLEMENTARY DATA STORE — fields outside TemplateInputs
 # (H&S, Diversity, SBT, Water detail, Coal breakdown)
 # Stored in data_storage/master/ESG_SUPPLEMENTARY.csv
+#
+# POST-AZURE MIGRATION: Move all these fields to master SQL table as additional
+# columns. Then deprecate this separate CSV file and remove _load_supplementary()
+# and _save_supplementary() functions. For now, keeping both CSV and SQL-ready.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _SUPP_PATH = Path("data_storage/master/ESG_SUPPLEMENTARY.csv")
@@ -483,7 +487,16 @@ LONG_YEARS = cfg.long_years()   # e.g. [2009..2023]
 CLIENTS = cfg.load_clients()
 DSS_DOMAIN = cfg.DSS_EMAIL_DOMAIN
 
-# -- Static fallback HIST_RAW (used only if no company selected yet) -----------
+# ── DEMO FALLBACK DATA ─────────────────────────────────────────────────────────
+# HIST_RAW is used ONLY when no master CSV is loaded (fresh install or demo mode).
+# In production, the app.py startup (line 72) always loads _CONSOLIDATED_DF from disk/Azure SQL.
+# If production is configured correctly, HIST_RAW is never used.
+#
+# NOTE: These values cover years 2009–2023 (14 years). If you add 2024+ data:
+#   - Pre-Azure: Update these arrays or remove if confident master CSV always loads
+#   - Post-Azure: Remove entirely (Azure SQL will be the only source)
+# ─────────────────────────────────────────────────────────────────────────────────
+
 HIST_RAW: dict[str, list] = {
     "total_sites":   [38,39,40,40,41,42,43,44,46,48,51,51,52,52],
     "iso_sites":     [36,38,39,39,40,41,42,43,45,47,51,51,52,52],

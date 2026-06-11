@@ -15,10 +15,13 @@ from pathlib import Path
 import pandas as pd
 
 # ── Source file search order ───────────────────────────────────────────────────
+# These XLSX fallback paths are used only when no master CSV exists (fresh install).
+# In production (once master CSV is created), CSV is always loaded first.
+# POST-AZURE: Remove these XLSX fallbacks entirely. Master data will live in Azure SQL.
 _XLSX_CANDIDATES = [
     (Path("data_storage/master/ESG_MASTER_WIDE_ALL_COMPANIES_2009_2023.xlsx"), "All_Companies"),
     (Path("data_storage/master/CONSOLIDATED_DUMMY_2009_2023.xlsx"),            "Raw Dummy data"),
-    # Legacy paths kept for backward compatibility
+    # Legacy paths kept for backward compatibility (dev/demo only)
     (Path("data_storage/raw/ESG_MASTER_WIDE_ALL_COMPANIES_2009_2023.xlsx"),    "All_Companies"),
     (Path("data_storage/raw/CONSOLIDATED_DUMMY_2009_2023.xlsx"),               "Raw Dummy data"),
     (Path("data_storage/consolidated/CONSOLIDATED_DUMMY_2009_2023.xlsx"),      "Raw Dummy data"),
@@ -393,10 +396,18 @@ def get_tip_graph_data(sector_df):
         "renewable": renewable,
         "non_renewable": [100 - r for r in renewable],
 
-        # Static (not in dataset)
+        # ─── STATIC DATA (not calculated from master CSV) ─────────────────────────
+        # H&S AUDIT METRICS: External and internal health & safety audits (%)
+        # Source: TIP sector benchmarks (document the authoritative source & update frequency)
+        # TODO: Pre-Azure, add these fields to master CSV template so they're data-driven
+        # TODO: Post-Azure, query these from SQL instead of hardcoded arrays
         "hs_external": [48, 50, 52, 54, 53, 56, 60, 63, 66, 68, 70, 72, 73, 74, 75],
         "hs_internal": [32, 33, 29, 32, 29, 29, 33, 32, 34, 35, 34, 34, 34, 36, 38],
 
+        # DIVERSITY METRICS: Female representation on board and total workforce (%)
+        # Source: TIP sector benchmarks (document the authoritative source & update frequency)
+        # TODO: Pre-Azure, add these fields to master CSV template so they're data-driven
+        # TODO: Post-Azure, query these from SQL instead of hardcoded arrays
         "women_board": [12, 11, 15, 15, 18, 19 ,21, 22, 23, 25, 26, 27, 28, 29, 30],
         "women_total": [13, 13, 14, 14, 15, 20, 25, 26, 27, 28, 29, 29, 31, 32, 34],
     }
