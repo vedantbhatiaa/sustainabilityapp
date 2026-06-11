@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Data (exclude from repo — stored in Azure or locally only)
+data_storage/master/*.csv
+data_storage/master/*.xlsx
+data_storage/versions/
+data_storage/members/
+data_storage/reports/
+data_storage/chat_logs/
+data_storage/validated/
+
+# Environment
+.env
+*.lock
+!*.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
