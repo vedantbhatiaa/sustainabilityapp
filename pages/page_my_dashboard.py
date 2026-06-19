@@ -1,13 +1,6 @@
 """
 pages/page_my_dashboard.py — My Dashboard: KPI-card-organized performance report.
-Layout: heading -> hero header -> KPI strip with dropdown -> tabbed sections.
 
-FIXES APPLIED v2:
-- Top margin increased to 85 to fix title cutoff
-- H&S & Female charts converted to grouped bars (no line)
-- Values displayed inside bars
-- Intensity charts match sector report style (stacked bars + line)
-- Legend positioning optimized per chart type
 """
 from __future__ import annotations
 import streamlit as st
@@ -68,6 +61,8 @@ def _inject_css():
     .dash-hero-year {{ font-size: 30px; font-weight: 700; color: white; text-align: right; line-height: 1; }}
     .dash-hero-badge {{ font-size: 10.5px; color: #6EE7B7; text-align: right; margin-top: 4px; }}
     .dash-heading-text {{ font-size: 20px; font-weight: 700; color: #1A202C; }}
+    
+    /* ── OLD KPI STRIP (kept for backward compatibility) ────────────────────── */
     .kpi-strip {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 14px; }}
     .kpi-tile {{ background: white; border: 1px solid #E3E8EE; border-radius: 10px;
                 padding: 13px 14px; box-shadow: 0 1px 3px rgba(16,24,40,.04); }}
@@ -76,6 +71,30 @@ def _inject_css():
     .kpi-tile-val {{ font-size: 19px; font-weight: 700; color: #1A202C; line-height: 1.1; }}
     .kpi-tile-unit {{ font-size: 10px; color: #9CA3AF; margin-top: 1px; }}
     .kpi-tile-delta {{ font-size: 10.5px; margin-top: 5px; font-weight: 600; }}
+    
+    /* ── OPTIMIZED KPI GRID (benchmarking style) ────────────────────────────── */
+    .kpi-grid-opt {{
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 14px;
+        margin-bottom: 20px;
+    }}
+    @media (max-width: 1400px) {{
+        .kpi-grid-opt {{
+            grid-template-columns: repeat(3, 1fr);
+        }}
+    }}
+    @media (max-width: 768px) {{
+        .kpi-grid-opt {{
+            grid-template-columns: repeat(2, 1fr);
+        }}
+    }}
+    @media (max-width: 480px) {{
+        .kpi-grid-opt {{
+            grid-template-columns: 1fr;
+        }}
+    }}
+    
     div[data-testid="stVerticalBlock"] div.dash-card {{
         background: white; border: none; border-radius: 10px;
         padding: 0px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(16,24,40,.04); overflow: visible;
@@ -116,6 +135,15 @@ def _kpi_tile(label, val, unit, delta_pct=None, good_if_down=True, perf_pct=None
         <div class="kpi-tile-unit">{unit}</div>
         {bar_html}
         <div class="kpi-tile-delta">{delta_html}</div>
+    </div>'''
+
+
+def _kpi_card_opt(name, value, unit, color, delta_pct=None):
+    """Optimized KPI card (benchmarking style - larger text, category colors)."""
+    return f'''<div style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:16px 14px;text-align:center;box-shadow:0 1px 3px rgba(15,23,42,.04)">
+      <div style="font-size:9.5px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">{name}</div>
+      <div style="font-size:28px;font-weight:700;color:{color};font-variant-numeric:tabular-nums;line-height:1.1">{value:.2f}</div>
+      <div style="font-size:10px;color:#64748B;margin-top:4px">{unit}</div>
     </div>'''
 
 
@@ -211,9 +239,8 @@ def _bar_trace(xs, ys, name, color=BAR_COLOR, width=0.5):
 
 
 def _line_trace(xs, ys, name, color=LINE_COLOR, yaxis="y"):
-    return go.Scatter(x=xs, y=ys, name=name, mode="lines+markers",
+    return go.Scatter(x=xs, y=ys, name=name, mode="lines",
                      line=dict(color=color, width=2.8),
-                     marker=dict(size=6, color=color, line=dict(width=0)),
                      yaxis=yaxis, hovertemplate="%{y:.2f}<extra></extra>")
 
 
@@ -274,9 +301,6 @@ def page_my_dashboard():
         "All years":    all_yrs,
     }
 
-    st.markdown('<div class="dash-heading-text">My Dashboard</div>',
-               unsafe_allow_html=True)
-
     co_df = df[df["Company"] == company].set_index("Year")
     latest_yr = all_yrs[-1]
 
@@ -289,17 +313,10 @@ def page_my_dashboard():
         <div style="text-align:right">
             <div class="dash-hero-year-label">Latest Report</div>
             <div class="dash-hero-year">{latest_yr}</div>
-            <div class="dash-hero-badge">✓ Active member</div>
         </div>
     </div>''', unsafe_allow_html=True)
 
-    kpi_col, dropdown_col = st.columns([5.5, 1])
-    
-    with dropdown_col:
-        sel = st.selectbox("Time range", list(range_opts.keys()),
-                           index=1, key="dash_range", label_visibility="collapsed")
-
-    yr_range = range_opts[sel]
+    yr_range = range_opts.get(st.session_state.get("dash_range", "Last 5 years"), list(range_opts.values())[1])
     xs = [str(y) for y in yr_range]
 
     def _col_raw(col, divisor=1.0):
@@ -395,19 +412,49 @@ def page_my_dashboard():
         perf = 50 - (delta * 1.2)  # 1.2x multiplier for sensitivity
         return max(0, min(100, perf))
 
-    with kpi_col:
-        st.markdown(f'''<div class="kpi-strip">
-            {_kpi_tile("Energy", f"{_last(energy_kpi):.0f}" if _last(energy_kpi) else "—", "GJ/ton", _yoy(energy_kpi), perf_pct=_perf_pct(_yoy(energy_kpi), good_if_down=True))}
-            {_kpi_tile("CO₂", f"{_last(co2_kpi):.2f}" if _last(co2_kpi) else "—", "t/ton", _yoy(co2_kpi), perf_pct=_perf_pct(_yoy(co2_kpi), good_if_down=True))}
-            {_kpi_tile("Water", f"{_last(water_kpi):.1f}" if _last(water_kpi) else "—", "m³/ton", _yoy(water_kpi), perf_pct=_perf_pct(_yoy(water_kpi), good_if_down=True))}
-            {_kpi_tile("Waste", f"{_last(waste_int):.1f}" if _last(waste_int) else "—", "kg/ton", _yoy(waste_int), perf_pct=_perf_pct(_yoy(waste_int), good_if_down=True))}
-            {_kpi_tile("ISO 14001", f"{_last(iso_pct):.0f}%" if _last(iso_pct) else "—", "Coverage", _yoy(iso_pct), perf_pct=_perf_pct(_yoy(iso_pct), good_if_down=False))}
-            {_kpi_tile("Renewables", f"{_last(renew_pct):.0f}%" if _last(renew_pct) else "—", "Share", _yoy(renew_pct), perf_pct=_perf_pct(_yoy(renew_pct), good_if_down=False))}
-        </div>''', unsafe_allow_html=True)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ✨ OPTIMIZED KPI SECTION (Benchmarking Style - v3) ✨
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    kpi_html = '<div class="kpi-grid-opt">'
+    for nm, val, un, col in [
+        ("CO₂ Intensity", _last(co2_kpi), "tCO₂/t", CAT_CO2),
+        ("Energy Intensity", _last(energy_kpi), "GJ/t", CAT_ENERGY),
+        ("Water Intensity", _last(water_kpi), "m³/t", CAT_WATER),
+        ("Renewable Elec.", _last(renew_pct), "%", CAT_RENEW),
+        ("Waste Recovery", _last(wrr), "%", CAT_WASTE),
+    ]:
+        v = val if val else 0
+        kpi_html += _kpi_card_opt(nm, v, un, col)
+    kpi_html += '</div>'
+    
+    st.markdown(kpi_html, unsafe_allow_html=True)
+    
+    # Footnote showing reporting year and data freshness
+    st.markdown(
+        f"<div style='font-size:11px;color:#64748B;margin-top:4px;margin-bottom:16px'>"
+        f"Scores shown for latest year <b>{latest_yr}</b>. "
+        f"Use time range selector below to view historical trends.</div>",
+        unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── Dropdown rendered BEFORE tabs, CSS margin-bottom pulls it up ─────────
+    st.markdown("""<style>
+    .dash-range-row { margin-bottom: -52px; position: relative; z-index: 0; }
+    </style>""", unsafe_allow_html=True)
+    st.markdown("<div class='dash-range-row'></div>", unsafe_allow_html=True)
+    _range_col, _dd_col = st.columns([5, 1])
+    with _dd_col:
+        sel = st.selectbox("Time range", list(range_opts.keys()),
+                           index=list(range_opts.keys()).index(
+                               st.session_state.get("dash_range", "Last 5 years")),
+                           key="dash_range", label_visibility="collapsed")
+    # yr_range and xs are already set above using session state default
 
     tab_energy, tab_co2, tab_water, tab_waste, tab_people = st.tabs([
-        "⚡ Energy & Certification", "☁️ CO₂ Emissions", "💧 Water",
-        "♻️ Waste Management", "👥 People & Governance"
+        "Energy & Certification", "CO₂ Emissions", "Water",
+        "Waste Management", "People & Governance"
     ])
 
     # ── ENERGY TAB ──────────────────────────────────────────────────────────────
@@ -421,10 +468,10 @@ def page_my_dashboard():
             fig1.update_layout(**_dual(
                 "Total Energy Consumption",
                 f"Total energy consumption and intensity from {yr_range[0]} to {yr_range[-1]}",
-                "Total energy (GJ)", "Energy intensity (GJ/ton)", height=H, bottom_margin=180))
-            _add_values_below_bars(fig1, xs, [("<span style=\'color:#B8CDD9\'>■</span> Absolute KPI", total_energy_gj, "{:,.0f}"),
-                ("<span style=\'color:#F5A623\'>—</span> Energy intensity", energy_kpi, "{:.2f}")], height=H)
-            fig1.update_layout(margin=dict(l=70, r=60, t=110, b=200))
+                "Total energy (GJ)", "Energy intensity (GJ/ton)", height=H, bottom_margin=220))
+            _add_values_below_bars(fig1, xs, [("<span style=\\'color:#B8CDD9\\'>■</span> Absolute KPI", total_energy_gj, "{:,.0f}"),
+                ("<span style=\\'color:#F5A623\\'>—</span> Energy intensity", energy_kpi, "{:.2f}")], height=H)
+            fig1.update_layout(margin=dict(l=70, r=60, t=110, b=240))
             apply_chart_animation(fig1)
             _card_open()
             st.plotly_chart(fig1, use_container_width=True, key=_chart_key(company, "f1"))
@@ -522,10 +569,10 @@ def page_my_dashboard():
                 "Total CO₂ Emissions",
                 f"Total CO₂ emissions and intensity from {yr_range[0]} to {yr_range[-1]}",
                 "Total CO₂ (Million metric tons)", "CO₂ intensity (t/ton)",
-                height=H, bottom_margin=180))
-            _add_values_below_bars(fig3, xs, [("<span style=\'color:#B8CDD9\'>■</span> Absolute KPI", total_co2_mt, "{:.3f}"),
-                ("<span style=\'color:#F5A623\'>—</span> CO₂ intensity", co2_kpi, "{:.2f}")], height=H)
-            fig3.update_layout(margin=dict(l=70, r=60, t=110, b=200))
+                height=H, bottom_margin=220))
+            _add_values_below_bars(fig3, xs, [("<span style=\\'color:#B8CDD9\\'>■</span> Absolute KPI", total_co2_mt, "{:.3f}"),
+                ("<span style=\\'color:#F5A623\\'>—</span> CO₂ intensity", co2_kpi, "{:.2f}")], height=H)
+            fig3.update_layout(margin=dict(l=70, r=60, t=110, b=240))
             apply_chart_animation(fig3)
             _card_open()
             st.plotly_chart(fig3, use_container_width=True, key=_chart_key(company, "f3"))
@@ -574,10 +621,10 @@ def page_my_dashboard():
                 "Water Withdrawals",
                 f"Total water withdrawals and water intensity from {yr_range[0]} to {yr_range[-1]}",
                 "Total water withdrawals (Million m³)", "Water intensity (m³/ton)",
-                height=H, bottom_margin=180))
-            _add_values_below_bars(fig4, xs, [("<span style=\'color:#B8CDD9\'>■</span> Absolute KPI", water_mm3, "{:.1f}"),
-                ("<span style=\'color:#F5A623\'>—</span> Water intensity", water_kpi, "{:.1f}")], height=H)
-            fig4.update_layout(margin=dict(l=70, r=60, t=110, b=200))
+                height=H, bottom_margin=220))
+            _add_values_below_bars(fig4, xs, [("<span style=\\'color:#B8CDD9\\'>■</span> Absolute KPI", water_mm3, "{:.1f}"),
+                ("<span style=\\'color:#F5A623\\'>—</span> Water intensity", water_kpi, "{:.1f}")], height=H)
+            fig4.update_layout(margin=dict(l=70, r=60, t=110, b=240))
             apply_chart_animation(fig4)
             _card_open()
             st.plotly_chart(fig4, use_container_width=True, key=_chart_key(company, "f4"))
@@ -595,10 +642,10 @@ def page_my_dashboard():
                 "Waste Generated & Intensity",
                 f"Total waste generated and waste intensity from {yr_range[0]} to {yr_range[-1]}",
                 "Waste (Metric T)", "Waste intensity (kg waste/ton)",
-                height=H, bottom_margin=180))
-            _add_values_below_bars(fig6, xs, [("<span style=\'color:#B8CDD9\'>■</span> Absolute KPI", total_waste, "{:,.0f}"),
-                ("<span style=\'color:#F5A623\'>—</span> Waste intensity", waste_int, "{:.1f}")], height=H)
-            fig6.update_layout(margin=dict(l=70, r=60, t=110, b=200))
+                height=H, bottom_margin=220))
+            _add_values_below_bars(fig6, xs, [("<span style=\\'color:#B8CDD9\\'>■</span> Absolute KPI", total_waste, "{:,.0f}"),
+                ("<span style=\\'color:#F5A623\\'>—</span> Waste intensity", waste_int, "{:.1f}")], height=H)
+            fig6.update_layout(margin=dict(l=70, r=60, t=110, b=240))
             apply_chart_animation(fig6)
             _card_open()
             st.plotly_chart(fig6, use_container_width=True, key=_chart_key(company, "f6"))

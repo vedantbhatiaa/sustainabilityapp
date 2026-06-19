@@ -16,10 +16,11 @@ def _mpl():
     import matplotlib.patches as mp
     return plt, mp
 
-def _save(fig, dpi=130):
+def _save(fig, dpi=150):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
-                facecolor="white", edgecolor="none")
+                facecolor="white", edgecolor="none",
+                pad_inches=0.15)   # padding so labels/legend are never clipped
     buf.seek(0); data = buf.read(); buf.close()
     try:
         import matplotlib.pyplot as plt; plt.close(fig)
@@ -129,3 +130,146 @@ def position_bar(kpi_names, positions, colors, title="Sector Percentile (100=bes
     ax.set_title(title, fontsize=9, fontweight="bold", color=C["navy"], pad=4, loc="left")
     ax.xaxis.grid(True, color=C["border"], linewidth=0.4, linestyle="--"); ax.set_axisbelow(True)
     return _save(fig)
+
+
+def grouped_bar_line(x, y1, y2, line1, line2, title="", ylabel="", ylabel2="",
+                     bar1_label="TIP", bar2_label="Company",
+                     line1_label="Intensity (TIP)", line2_label="Intensity (Co.)",
+                     bar1_color="#3DBDB5", bar2_color="#1A1A2E"):
+    """Grouped bars (TIP + Company) with dual y-axis intensity lines.
+    Includes: values inside bars, annotation table below, full background box."""
+    plt, _ = _mpl()
+    fig = plt.figure(figsize=(7.5, 4.0), facecolor="#f5f4f2")
+
+    # Chart area: leaves 38% at bottom for annotation table
+    ax1 = fig.add_axes([0.09, 0.40, 0.78, 0.50], facecolor="white")
+    ax2 = ax1.twinx()
+
+    n = len(x); bw = 0.35; xn = np.arange(n)
+
+    # ── Grouped bars ──────────────────────────────────────────────────────────
+    bars1 = ax1.bar(xn - bw/2, y1, width=bw, color=bar1_color, alpha=0.9,
+                    label=bar1_label, edgecolor="white")
+    bars2 = ax1.bar(xn + bw/2, y2, width=bw, color=bar2_color, alpha=0.9,
+                    label=bar2_label, edgecolor="white")
+
+    # Values inside bars
+    def _fmt_bar(v):
+        if v is None or v == 0: return ""
+        if abs(v) >= 1e6: return f"{v/1e6:.1f}M"
+        if abs(v) >= 1e3: return f"{v/1e3:.0f}k"
+        return f"{v:.1f}"
+
+    for bars, col in [(bars1, "white"), (bars2, "white")]:
+        for bar in bars:
+            h = bar.get_height()
+            if h > 0:
+                ax1.text(bar.get_x() + bar.get_width()/2, h * 0.5,
+                         _fmt_bar(h), ha="center", va="center",
+                         fontsize=4.5, color=col, fontweight="bold")
+
+    # ── Lines on right axis ───────────────────────────────────────────────────
+    ax2.plot(xn, line1, color="#2a2825", linewidth=1.8, linestyle="-",
+             marker="o", markersize=3, label=line1_label)
+    ax2.plot(xn, line2, color="#F5A623", linewidth=1.8, linestyle="--",
+             marker="o", markersize=3, label=line2_label)
+
+    ax1.set_xticks(xn); ax1.set_xticklabels([str(v) for v in x], fontsize=6, color=C["muted"])
+    ax1.set_ylabel(ylabel, fontsize=6, color=C["muted"])
+    ax2.set_ylabel(ylabel2, fontsize=6, color=C["muted"])
+    if title: ax1.set_title(title, fontsize=8, fontweight="bold", color=C["navy"], loc="left", pad=4)
+    ax1.tick_params(colors=C["muted"], labelsize=6)
+    ax2.tick_params(colors=C["muted"], labelsize=6)
+    for s in ax1.spines.values(): s.set_edgecolor(C["border"]); s.set_linewidth(0.4)
+    for s in ax2.spines.values(): s.set_edgecolor(C["border"]); s.set_linewidth(0.4)
+    ax1.yaxis.grid(True, color=C["border"], linewidth=0.3, linestyle="--"); ax1.set_axisbelow(True)
+
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax1.legend(h1+h2, l1+l2, fontsize=5, loc="upper right", ncol=2,
+               framealpha=0.7, edgecolor=C["border"])
+
+    # ── Annotation table: label column LEFT, values RIGHT ─────────────────────
+    # Use two separate axes to avoid overlap:
+    #   lbl_ax: left 22% of width → row labels
+    #   val_ax: right 78% of width → per-year values aligned with bars
+    LABEL_W = 0.20   # fraction of figure width for label column
+
+    lbl_ax = fig.add_axes([0.09, 0.01, LABEL_W, 0.36], facecolor="#f5f4f2")
+    lbl_ax.axis("off")
+    lbl_ax.set_xlim(0, 1); lbl_ax.set_ylim(0, 1)
+
+    val_ax = fig.add_axes([0.09 + LABEL_W, 0.01, 0.78 - LABEL_W, 0.36], facecolor="#f5f4f2")
+    val_ax.axis("off")
+    val_ax.set_xlim(-0.5, n - 0.5); val_ax.set_ylim(0, 1)
+
+    def _fmt_v(v, big=True):
+        if v is None: return "—"
+        if big and abs(v) >= 1e6: return f"{v/1e6:.1f}M"
+        if big and abs(v) >= 1e3: return f"{v/1e3:.0f}k"
+        return f"{v:.2f}"
+
+    rows = [
+        (f"■ {bar1_label}",   [_fmt_v(v) for v in y1],    bar1_color,   True),
+        (f"■ {bar2_label}",   [_fmt_v(v) for v in y2],    bar2_color,   True),
+        (f"— {line1_label}",  [_fmt_v(v,False) for v in line1], "#2a2825", False),
+        (f"— {line2_label}",  [_fmt_v(v,False) for v in line2], "#F5A623", False),
+    ]
+    row_ys = [0.82, 0.57, 0.32, 0.07]
+
+    for (lbl, vals, col, _), ry in zip(rows, row_ys):
+        lbl_ax.text(0.95, ry, lbl, fontsize=5.5, color=col, va="center",
+                    ha="right", fontweight="bold")
+        for i, v in enumerate(vals):
+            val_ax.text(i, ry, v, fontsize=5.5, color="#374151",
+                        ha="center", va="center")
+
+    fig.patch.set_linewidth(0.5); fig.patch.set_edgecolor(C["border"])
+    return _save(fig, dpi=140)
+
+
+def grouped_stacked_bar(x, tip_re, tip_nr, co_re, co_nr, title="",
+                        tip_re_color="#2D4A5A", tip_nr_color="#D4C5A9",
+                        co_re_color="#3DBDB5", co_nr_color="#B8CDD9",
+                        tip_label="TIP", co_label="Company"):
+    """Grouped stacked bars with % labels inside and full background.
+    Matches the Electricity chart in the Streamlit benchmarking UI."""
+    plt, _ = _mpl()
+    fig, ax = plt.subplots(figsize=(7.0, 3.0), facecolor="#f5f4f2")
+    ax.set_facecolor("white")
+
+    n = len(x); bw = 0.35; xn = np.arange(n)
+
+    # TIP stacked
+    b1 = ax.bar(xn - bw/2, tip_re, width=bw, color=tip_re_color, alpha=0.9,
+                label=f"Renewable ({tip_label})", edgecolor="white")
+    b2 = ax.bar(xn - bw/2, tip_nr, width=bw, bottom=tip_re, color=tip_nr_color,
+                alpha=0.9, label=f"Non-renewable ({tip_label})", edgecolor="white")
+    # Company stacked
+    b3 = ax.bar(xn + bw/2, co_re, width=bw, color=co_re_color, alpha=0.9,
+                label=f"Renewable ({co_label})", edgecolor="white")
+    b4 = ax.bar(xn + bw/2, co_nr, width=bw, bottom=co_re, color=co_nr_color,
+                alpha=0.9, label=f"Non-renewable ({co_label})", edgecolor="white")
+
+    # Value labels inside bars
+    for bars, bases in [(b1, [0]*n), (b2, tip_re), (b3, [0]*n), (b4, co_re)]:
+        for bar, base in zip(bars, bases):
+            h = bar.get_height()
+            if h > 4:
+                ax.text(bar.get_x() + bar.get_width()/2,
+                        base + h/2, f"{h:.1f}%",
+                        ha="center", va="center", fontsize=5.5, color="white",
+                        fontweight="bold")
+
+    ax.set_xticks(xn); ax.set_xticklabels([str(v) for v in x], fontsize=6, color=C["muted"])
+    ax.set_ylim(0, 105)
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0f}%")
+    if title: ax.set_title(title, fontsize=8, fontweight="bold", color=C["navy"], loc="left", pad=4)
+    ax.tick_params(colors=C["muted"], labelsize=6)
+    for s in ax.spines.values(): s.set_edgecolor(C["border"]); s.set_linewidth(0.4)
+    ax.yaxis.grid(True, color=C["border"], linewidth=0.3, linestyle="--"); ax.set_axisbelow(True)
+    ax.legend(fontsize=5.5, loc="upper right", ncol=2, framealpha=0.7, edgecolor=C["border"])
+
+    fig.tight_layout(pad=0.8)
+    fig.patch.set_linewidth(0.5); fig.patch.set_edgecolor(C["border"])
+    return _save(fig, dpi=140)

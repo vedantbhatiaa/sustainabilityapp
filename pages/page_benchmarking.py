@@ -255,19 +255,38 @@ def page_benchmarking():
 
     # ── Footnote about which year scores are from ─────────────────────────────
     if _kpi_year_note_needed:
-        st.caption(
-            f"Scores shown for **{_kpi_year}** (most recent year with full sector data). "
-            f"**{rep_year}** TIP member submissions are still being collected — "
-            f"benchmarks will update once all members have reported."
-        )
+        st.markdown(
+            f"<div style='font-size:11px;color:{MUTED};margin-top:2px;margin-bottom:0px'>"
+            f"Scores shown for <b>{_kpi_year}</b> (most recent year with full sector data). "
+            f"<b>{rep_year}</b> TIP member submissions are still being collected — "
+            f"benchmarks will update once all members have reported.</div>",
+            unsafe_allow_html=True)
     elif _n_peers == 0:
-        st.caption(
+        st.markdown(
+            f"<div style='font-size:11px;color:{MUTED};margin-top:2px;margin-bottom:0px'>"
             f"Only {company}'s data is available for {_kpi_year}. "
-            f"TIP avg will reflect peer benchmarks once other member submissions are received."
-        )
-    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+            f"TIP avg will reflect peer benchmarks once other member submissions are received.</div>",
+            unsafe_allow_html=True)
 
-    # ── Helpers ────────────────────────────────────────────────────────────────
+    # ── KPI Tabs + Time range ─────────────────────────────────────────────────
+    # Negative margin pulls the dropdown row up to visually align with tab bar
+    st.markdown("""<style>
+    .bench-range-row { margin-bottom: -48px; margin-top: 6px; position: relative; z-index: 0; }
+    </style>""", unsafe_allow_html=True)
+    st.markdown("<div class='bench-range-row'></div>", unsafe_allow_html=True)
+    _spacer, _range_col = st.columns([5, 1])
+    with _range_col:
+        _b_range_lbl = st.selectbox(
+            "Time range", list(_b_range_opts.keys()),
+            index=list(_b_range_opts.keys()).index(
+                st.session_state.get("bench_year_range", "Last 5 years")),
+            key="bench_year_range",
+            label_visibility="collapsed",
+        )
+
+    tab_energy, tab_co2, tab_water, tab_waste, tab_people = st.tabs([
+        "Energy & Certifications", "CO₂ Emissions", "Water", "Waste", "People & Governance"
+    ])
     comp_hist = dl.get_company_hist(state.CONSOLIDATED_DF, company)
     all_years = sorted(dl.get_years(state.CONSOLIDATED_DF, company) or [rep_year])
     from formula_engine import TemplateInputs as TI, calculate as calc
@@ -607,90 +626,107 @@ def page_benchmarking():
             _cover()
             cursor = H - 34*mm
 
-            # ── General ──────────────────────────────────────────────────────
-            cursor = _section_title(cv, "General — ESG Performance Overview", cursor)
-            dims = ["CO₂ Intensity","Energy Intensity","Water Intensity","Renewable Elec.","Waste Recovery"]
-            co_scores = []
-            for b in BM:
-                rng = max(b._hi - b._lo, 0.001)
-                raw = (b.company_value - b._lo) / rng
-                co_scores.append(max(0, min(100, (1-raw)*100 if b.lower_is_better else raw*100)))
-            sec_sc = _compute_industry_scores(state.CONSOLIDATED_DF, rep_year)
-            cursor = _embed(cv, pc.radar_chart(dims, co_scores, sec_sc, company.split()[0]),
-                            cursor, "ESG Radar Profile — company vs sector median")
-            positions = [max(0,min(100,(1-(b.company_value-b._lo)/max(b._hi-b._lo,0.001))*100)) if b.lower_is_better
-                         else max(0,min(100,((b.company_value-b._lo)/max(b._hi-b._lo,0.001))*100)) for b in BM]
-            cursor = _embed(cv, pc.position_bar(
-                ["CO₂ Intensity","Energy Intensity","Water Intensity","Renewable Elec.","Waste Recovery"],
-                positions, [CAT_CO2, CAT_ENERGY, CAT_WATER, CAT_RENEW, CAT_WASTE]),
-                cursor, "Sector Percentile Position (100 = best)", h=45*mm)
-
             # ── CO₂ ──────────────────────────────────────────────────────────
-            cursor = _section_title(cv, "CO₂ — Carbon Emissions & Intensity", cursor)
-            sm,sq25,sq75 = _ss("Total CO2 - KPI")
-            cursor = _embed(cv, pc.line_vs_sector(ys, [trend.get(y,{}).get("co2_kpi") for y in ys],
-                sm,sq25,sq75,company.split()[0],"CO₂ Intensity vs Sector (tCO₂/t)",color=pc.C["co2"]),
-                cursor, "Company line vs sector IQR band · Q1/Median/Q3 shown")
-            cursor = _embed(cv, pc.stacked_area(ys,
+            cursor = _section_title(cv, "CO₂ — Total Emissions & Intensity", cursor)
+            tip_co2_abs, _, _ = _sector_series("Total CO2")
+            tip_co2_kpi, _, _ = _sector_series("Total CO2 - KPI")
+            co2_tip  = [tip_co2_abs.get(y, 0) for y in ys]
+            co2_co   = [trend.get(y,{}).get("scope1",0) + trend.get(y,{}).get("scope2",0) for y in ys]
+            int_tip  = [tip_co2_kpi.get(y, 0) for y in ys]
+            int_co   = [trend.get(y,{}).get("co2_kpi",0) for y in ys]
+            cursor = _embed(cv, pc.grouped_bar_line(
+                ys, co2_tip, co2_co, int_tip, int_co,
+                "Total CO₂ — TIP vs Company (tCO₂)",
+                "Total CO₂ (tCO₂)", "CO₂ Intensity (tCO₂/t)",
+                bar1_label="TIP", bar2_label=company.split()[0],
+                line1_label="Intensity (TIP)", line2_label="Intensity (Co.)",
+                bar1_color="#3DBDB5", bar2_color="#1A1A2E"),
+                cursor, "TIP sector aggregate vs company · intensity on right axis")
+            cursor = _embed(cv, pc.stacked_bar(ys,
                 {"Scope 1":[trend.get(y,{}).get("scope1",0) for y in ys],
                  "Scope 2":[trend.get(y,{}).get("scope2",0) for y in ys]},
                 "Scope 1 vs Scope 2 (tCO₂)",
-                color_dict={"Scope 1":pc.C["co2"],"Scope 2":"#94A3B8"}),
+                color_dict={"Scope 1":"#3DBDB5","Scope 2":"#0F7F78"}),
                 cursor, "Scope 1 = fuel combustion · Scope 2 = purchased energy")
 
             # ── Energy ────────────────────────────────────────────────────────
             cursor = _section_title(cv, "Energy — Intensity & Fuel Mix", cursor)
-            sm,sq25,sq75 = _ss("Total energy - KPI")
-            cursor = _embed(cv, pc.line_vs_sector(ys, [trend.get(y,{}).get("energy_kpi") for y in ys],
-                sm,sq25,sq75,company.split()[0],"Energy Intensity vs Sector (GJ/t)",color=pc.C["energy"]),
-                cursor)
+            tip_e_abs, _, _ = _sector_series("Total energy")
+            tip_e_kpi, _, _ = _sector_series("Total energy - KPI")
+            e_tip  = [tip_e_abs.get(y,0)/1e6 for y in ys]   # PJ
+            e_co   = [sum([trend.get(y,{}).get(k,0) for k in ["nat_gas","coal","diesel","renew_gj","nonrenew_gj"]])/1e6 for y in ys]
+            ei_tip = [tip_e_kpi.get(y,0) for y in ys]
+            ei_co  = [trend.get(y,{}).get("energy_kpi",0) for y in ys]
+            cursor = _embed(cv, pc.grouped_bar_line(
+                ys, e_tip, e_co, ei_tip, ei_co,
+                "Total Energy — TIP vs Company (PJ)",
+                "Total Energy (PJ)", "Energy Intensity (GJ/t)",
+                bar1_label="TIP", bar2_label=company.split()[0],
+                line1_label="Intensity (TIP)", line2_label="Intensity (Co.)",
+                bar1_color="#3DBDB5", bar2_color="#1A1A2E"),
+                cursor, "TIP sector aggregate vs company · intensity on right axis")
             cursor = _embed(cv, pc.stacked_bar(ys,
                 {"Nat. Gas":[trend.get(y,{}).get("nat_gas",0) for y in ys],
                  "Renew. Elec":[trend.get(y,{}).get("renew_gj",0) for y in ys],
                  "Diesel":[trend.get(y,{}).get("diesel",0) for y in ys],
                  "Coal":[trend.get(y,{}).get("coal",0) for y in ys]},
                 "Energy Mix by Source (GJ)",
-                color_dict={"Nat. Gas":pc.C["energy"],"Renew. Elec":pc.C["green"],
+                color_dict={"Nat. Gas":"#F5A623","Renew. Elec":"#7BAF74",
                             "Diesel":"#78716C","Coal":"#475569"}),
-                cursor, "Fuel mix evolution over all available years")
+                cursor, "Fuel mix evolution over selected years")
 
             # ── Electricity ───────────────────────────────────────────────────
             cursor = _section_title(cv, "Electricity — Renewable vs Non-Renewable", cursor)
-            total_e = [max(trend.get(y,{}).get("renew_gj",0)+trend.get(y,{}).get("nonrenew_gj",0),1) for y in ys]
-            cursor = _embed(cv, pc.stacked_bar(ys,
-                {"Renewable":[trend.get(y,{}).get("renew_gj",0)/t*100 for y,t in zip(ys,total_e)],
-                 "Non-Renewable":[trend.get(y,{}).get("nonrenew_gj",0)/t*100 for y,t in zip(ys,total_e)]},
-                "Electricity Mix (%)", pct_mode=True,
-                color_dict={"Renewable":pc.C["green"],"Non-Renewable":"#94A3B8"}), cursor)
-            sm,sq25,sq75 = _ss("Renewable_Electricity_Share_%")
-            cursor = _embed(cv, pc.line_vs_sector(ys,
-                [trend.get(y,{}).get("renew_pct") for y in ys],
-                sm,sq25,sq75,company.split()[0],"Renewable Electricity Share vs Sector (%)",color=pc.C["green"]),
-                cursor, "Share of electricity from renewable sources vs TIP sector quartiles")
+            tip_re, _, _ = _sector_series("Renewable Electricity Purchased")
+            tip_nr, _, _ = _sector_series("Non-Renewable Electricity Purchased")
+            tip_re_pct, tip_nr_pct, co_re_pct, co_nr_pct = [], [], [], []
+            for y in ys:
+                r = tip_re.get(y,0); n = tip_nr.get(y,0); t = max(r+n,1)
+                tip_re_pct.append(r/t*100); tip_nr_pct.append(n/t*100)
+                te = max(trend.get(y,{}).get("renew_gj",0)+trend.get(y,{}).get("nonrenew_gj",0),1)
+                co_re_pct.append(trend.get(y,{}).get("renew_gj",0)/te*100)
+                co_nr_pct.append(trend.get(y,{}).get("nonrenew_gj",0)/te*100)
+            cursor = _embed(cv, pc.grouped_stacked_bar(
+                ys, tip_re_pct, tip_nr_pct, co_re_pct, co_nr_pct,
+                "Electricity from Renewable Sources (%)",
+                tip_re_color="#2D4A5A", tip_nr_color="#D4C5A9",
+                co_re_color="#3DBDB5", co_nr_color="#B8CDD9",
+                tip_label="TIP", co_label=company.split()[0]),
+                cursor, "TIP aggregate vs company · renewable share comparison")
 
             # ── Water ─────────────────────────────────────────────────────────
             cursor = _section_title(cv, "Water — Intensity & Withdrawals", cursor)
-            sm,sq25,sq75 = _ss("Water intake - KPI")
-            cursor = _embed(cv, pc.line_vs_sector(ys,
-                [trend.get(y,{}).get("water_kpi") for y in ys],
-                sm,sq25,sq75,company.split()[0],"Water Intensity vs Sector (m³/t)",color=pc.C["water"]),
-                cursor)
-            cursor = _embed(cv, pc.bar_chart(ys,
-                [trend.get(y,{}).get("water_m3",0)/1e6 for y in ys],
-                "Water Withdrawals (M m³)","M m³",color=pc.C["water"]), cursor)
+            tip_w_abs, _, _ = _sector_series("Water intake")
+            tip_w_kpi, _, _ = _sector_series("Water intake - KPI")
+            w_tip  = [tip_w_abs.get(y,0)/1e6 for y in ys]
+            w_co   = [trend.get(y,{}).get("water_m3",0)/1e6 for y in ys]
+            wi_tip = [tip_w_kpi.get(y,0) for y in ys]
+            wi_co  = [trend.get(y,{}).get("water_kpi",0) for y in ys]
+            cursor = _embed(cv, pc.grouped_bar_line(
+                ys, w_tip, w_co, wi_tip, wi_co,
+                "Water Withdrawals — TIP vs Company (M m³)",
+                "Water (M m³)", "Water Intensity (m³/t)",
+                bar1_label="TIP", bar2_label=company.split()[0],
+                line1_label="Intensity (TIP)", line2_label="Intensity (Co.)",
+                bar1_color="#3DBDB5", bar2_color="#1A1A2E"),
+                cursor, "TIP sector aggregate vs company · intensity on right axis")
 
             # ── Waste ─────────────────────────────────────────────────────────
-            cursor = _section_title(cv, "Waste — Recovery Rate & Volumes", cursor)
-            sm,sq25,sq75 = _ss("Waste_Recovery_Rate_%")
-            cursor = _embed(cv, pc.area_with_target(ys,
-                [trend.get(y,{}).get("waste_pct",0) for y in ys],
-                "Waste Recovery Rate vs Sector (%)","% recovered",color=pc.C["waste"]),
-                cursor, "Target 90% shown · TIP sector IQR band")
-            cursor = _embed(cv, pc.stacked_bar(ys,
-                {"Total Waste":[trend.get(y,{}).get("waste_total",0) for y in ys],
-                 "Recovered":[trend.get(y,{}).get("waste_rec",0) for y in ys]},
-                "Total Waste vs Recovered (T)",
-                color_dict={"Total Waste":"#E2E8F0","Recovered":pc.C["waste"]}), cursor)
+            cursor = _section_title(cv, "Waste — Generated & Recovery Rate", cursor)
+            tip_wst, _, _ = _sector_series("Total Waste")
+            tip_wrr, _, _ = _sector_series("Waste_Recovery_Rate_%")
+            wst_tip = [tip_wst.get(y,0) for y in ys]
+            wst_co  = [trend.get(y,{}).get("waste_total",0) for y in ys]
+            wrr_tip = [tip_wrr.get(y,0) for y in ys]
+            wrr_co  = [trend.get(y,{}).get("waste_pct",0) for y in ys]
+            cursor = _embed(cv, pc.grouped_bar_line(
+                ys, wst_tip, wst_co, wrr_tip, wrr_co,
+                "Total Waste — TIP vs Company (metric T)",
+                "Total Waste (T)", "Recovery Rate (%)",
+                bar1_label="TIP", bar2_label=company.split()[0],
+                line1_label="Recovery (TIP)", line2_label="Recovery (Co.)",
+                bar1_color="#3DBDB5", bar2_color="#1A1A2E"),
+                cursor, "TIP sector aggregate vs company · recovery rate on right axis")
 
             # Footer on last page
             cv.setFillColor((.95,.96,.98)); cv.rect(0,0,W,11*mm,fill=1,stroke=0)
@@ -709,24 +745,6 @@ def page_benchmarking():
                 pass
             return None
 
-
-    # ── KPI Tabs + Time range ─────────────────────────────────────────────────
-    # Time range in a right-aligned column above the tabs
-    _spacer, _range_col = st.columns([5, 1])
-    with _spacer:
-        st.markdown("<div style='height:0'></div>", unsafe_allow_html=True)
-    with _range_col:
-        _b_range_lbl = st.selectbox(
-            "Time range", list(_b_range_opts.keys()),
-            index=list(_b_range_opts.keys()).index(
-                st.session_state.get("bench_year_range", "Last 5 years")),
-            key="bench_year_range",
-            label_visibility="collapsed",
-        )
-
-    tab_energy, tab_co2, tab_water, tab_waste, tab_people = st.tabs([
-        "Energy & Certifications", "CO₂ Emissions", "Water", "Waste", "People & Governance"
-    ])
 
     # ── TIP Chart helpers shared with benchmarking ───────────────────────────
     from plotly.subplots import make_subplots as _msp
