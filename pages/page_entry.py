@@ -86,8 +86,20 @@ def page_entry():
           <div style="font-size:12px;color:{MUTED}">ESG KPI Data Entry — All TIP Fields</div>
         """, unsafe_allow_html=True)
     with h2:
-        yr_options = sorted(list(set(all_yrs + [state.CURR_YEAR])), reverse=True)
-        sel_yr = st.selectbox("", yr_options, key="entry_year_sel",
+        # Always offer every year from the company's first reported year (or
+        # the platform current year, if they have none yet) through
+        # state.CURR_YEAR + 1. CURR_YEAR is the platform-wide most recent
+        # year ANY company has data for (recalculated on every save via
+        # cfg.refresh_year_bounds) — so the +1 means the moment any company
+        # submits e.g. 2025, every company's dropdown immediately offers 2026
+        # too, without needing to touch this file again. This also fixes the
+        # old bug where a company that stopped at 2023 while the platform had
+        # moved on to 2025 would see "2025, 2023, 2022..." with 2024 missing
+        # entirely — the old code only unioned all_yrs with the single value
+        # state.CURR_YEAR, never filling the gap between them.
+        lo = all_yrs[0] if all_yrs else state.CURR_YEAR
+        yr_options = sorted(set(all_yrs) | set(range(lo, state.CURR_YEAR + 2)), reverse=True)
+        sel_yr = st.selectbox("Year", yr_options, key="entry_year_sel",
                               label_visibility="collapsed")
 
     is_new = sel_yr not in all_yrs

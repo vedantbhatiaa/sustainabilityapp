@@ -32,12 +32,24 @@ def get_hist_outputs():
     Return list of (year, TemplateInputs, TemplateOutputs) for ALL years in the DB.
     Uses year-keyed dict lookup — avoids positional list drift when fields missing.
     Always reads from state.CONSOLIDATED_DF so any saved update is immediately visible.
+
+    Year range: this company's own reported years, UNIONED with every year up
+    to state.CURR_YEAR + 1 (the platform-wide current year, plus the next
+    "early" reporting year). state.CURR_YEAR is recalculated platform-wide via
+    cfg.refresh_year_bounds() on every save, so the moment ANY company submits
+    e.g. 2025, CURR_YEAR becomes 2025 and every company's table — including
+    ones still on 2023 — immediately gets a 2024 and 2025 (and 2026, the next
+    "early" year) column, even though those years have no data yet. Missing
+    years simply render as zeros/dashes downstream (same as a year with no
+    submission today).
     """
     company = (st.session_state.get("reporting_company") or
                st.session_state.get("user_company") or "")
     if company and not state.CONSOLIDATED_DF.empty:
-        all_years  = sorted(dl.get_years(state.CONSOLIDATED_DF, company) or [])
+        co_years   = sorted(dl.get_years(state.CONSOLIDATED_DF, company) or [])
         comp_hist  = dl.get_company_hist(state.CONSOLIDATED_DF, company)
+        lo = co_years[0] if co_years else state.CURR_YEAR
+        all_years  = sorted(set(co_years) | set(range(lo, state.CURR_YEAR + 2)))
     else:
         all_years  = list(state.HIST_YEARS)
         comp_hist  = {}

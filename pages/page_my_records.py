@@ -72,7 +72,12 @@ def page_my_records():
     """
     company   = st.session_state.user_company
     comp_hist = dl.get_company_hist(state.CONSOLIDATED_DF, company)
-    all_yrs   = sorted(dl.get_years(state.CONSOLIDATED_DF, company) or [state.CURR_YEAR], reverse=True)
+    co_years  = sorted(dl.get_years(state.CONSOLIDATED_DF, company) or [])
+    # Same range rule as Submit Data / Home: company's own years, plus every
+    # year up to the platform's current year + 1, so gap years and the newly
+    # unlocked next year are always selectable here too.
+    _lo = co_years[0] if co_years else state.CURR_YEAR
+    all_yrs = sorted(set(co_years) | set(range(_lo, state.CURR_YEAR + 2)), reverse=True)
 
     # ── Header: title + year dropdown + Save button ───────────────────────────
     h_title, h_yr, h_btn = st.columns([3, 1, 1])

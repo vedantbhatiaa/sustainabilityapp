@@ -79,7 +79,8 @@ def render_waste_tab():
             row[str(rep_year)] = ""; row["YoY %"] = ""
             data.append({"_type":"section","_row":row}); continue
         row = {"Indicator": label, "Unit": unit or ""}
-        hist_nums = []
+        hist_nums  = []
+        hist_by_yr = {}
         for yr, hi, ho in hist:
             v = getattr(hi, key, None) if key else None
             if v is None and fn: v = fn(hi, ho)
@@ -87,14 +88,20 @@ def render_waste_tab():
                 row[str(yr)] = f"{int(round(float(v))):,}" if isinstance(v,(int,float)) else (str(v) if v else "—")
             except (TypeError, ValueError):
                 row[str(yr)] = str(v) if v is not None else "—"
-            try: hist_nums.append(float(str(v).replace(",","").replace("%","").replace("—","0")))
-            except: hist_nums.append(0)
+            try:
+                numv = float(str(v).replace(",","").replace("%","").replace("—","0"))
+            except:
+                numv = 0
+            hist_nums.append(numv)
+            hist_by_yr[yr] = numv
         cv = getattr(inp, key, None) if key else None
         if cv is None and fn: cv = fn(inp, out)
         row[str(rep_year)] = str(cv) if cv is not None else "—"
         try:
             cn = float(str(cv).replace(",","").replace("%",""))
-            pn = hist_nums[-1] if hist_nums else 0
+            # Look up rep_year-1 explicitly — using hist_nums[-1] (last item)
+            # breaks once padding years with no data sit after it in the list.
+            pn = hist_by_yr.get(rep_year - 1, 0)
             row["YoY %"] = f"{(cn-pn)/abs(pn)*100:+.1f}%" if pn else "—"
         except: row["YoY %"] = "—"
         data.append({"_type":rtype,"_row":row})

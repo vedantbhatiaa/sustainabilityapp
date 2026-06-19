@@ -100,6 +100,9 @@ def render_template_table():
         [(yr, hi, ho) for yr, hi, ho in hist if yr != rep_year] + [(rep_year, inp, out)],
         key=lambda t: t[0],
     )
+    # Year-keyed lookup — used below to find rep_year-1 reliably even when
+    # padding years (no data yet) sit after it in the chronological list.
+    hist_by_yr = {yr: (hi, ho) for yr, hi, ho in hist}
 
     ROWS = [
         ("section","ISO 14001",None,None,None),
@@ -232,9 +235,10 @@ def render_template_table():
             return None
         curr_num = _rv(inp, out, key, fn)
         prev_num = None
-        if len(hist) >= 2:
-            _, ph, po = hist[-2]
-            prev_num  = _rv(ph, po, key, fn)
+        prev_entry = hist_by_yr.get(rep_year - 1)
+        if prev_entry is not None:
+            ph, po = prev_entry
+            prev_num = _rv(ph, po, key, fn)
         try:
             if curr_num is not None and prev_num is not None and prev_num != 0:
                 row["YoY %"] = f"{(curr_num-prev_num)/abs(prev_num)*100:+.1f}%"

@@ -2,16 +2,6 @@
 pages/page_home.py — Client home dashboard with KPI tiles and trend charts.
 Globals are read from state.py (populated by app.py at startup).
 
-v4 CHANGES:
-- Blue hero banner replaces plain welcome text
-- Year dropdown + Submit Data moved below banner
-- Submission status shows which sections are missing
-- KPI cards: show current year vs previous year (like benchmarking style)
-- Red chip badges removed from KPI cards
-- Tab order: Energy → CO₂ → Water → Waste & Fuel → People & Governance
-- All charts: values annotated inside bars + below x-axis, no stray markers
-- Waste & Fuel section redesigned with better charts
-- People & Governance tab added with H&S and Female Representation charts
 """
 from __future__ import annotations
 import streamlit as st
@@ -92,11 +82,11 @@ SECTION_LABELS = [
 ]
 
 
-def _chart_base(title, height=320, bottom=55, top=50, r=70):
+def _chart_base(title, height=320, bottom=55, top=50, r=70, l=70):
     return dict(
         plot_bgcolor="#f5f4f2", paper_bgcolor="#f5f4f2",
         height=height, bargap=0.24,
-        margin=dict(l=55, r=r, t=top, b=bottom),
+        margin=dict(l=l, r=r, t=top, b=bottom),
         title=dict(text=f"<b>{title}</b>",
                    font=dict(size=14, color="#2a2825", family=FONT_FAM), x=0),
         font=dict(family=FONT_FAM, size=11, color=AXIS_COL),
@@ -110,6 +100,7 @@ def _chart_base(title, height=320, bottom=55, top=50, r=70):
             showgrid=True, gridcolor=GRID_COL, showline=True,
             linecolor=AXIS_LINE, linewidth=1.2,
             tickfont=dict(size=11, color=AXIS_COL), zeroline=False,
+            automargin=True,
         ),
         legend=dict(
             orientation="h", x=0.5, xanchor="center", y=-0.22,
@@ -125,6 +116,7 @@ def _dual_y(fig, y2_title, y2_color=LINE_DARK):
             overlaying="y", side="right", tickformat=".2f",
             showgrid=False, showline=True, linecolor=AXIS_LINE,
             tickfont=dict(size=11, color=y2_color),
+            automargin=True,
         )
     )
 
@@ -141,21 +133,60 @@ def _annot_bar_values(fig, xs, ys, fmt="{:.0f}", threshold=0):
             )
 
 
-def _annot_below(fig, xs, rows):
+def _annot_below(fig, xs, rows, sym_x=-0.01):
     """
-    Add value rows below x-axis (like my dashboard / benchmarking style).
+    Add value rows below x-axis.
     rows = list of (label, values_list, fmt_str)
+    sym_x: paper x for coloured symbol (negative = left of axes).
+    Use more negative values for half-width (2-col) charts.
+    Labels matching SYM_COLORS get a coloured symbol + dark label text,
+    rendered as two tight annotations (symbol right-anchored, text left-anchored
+    immediately to the right of the symbol).
     """
-    y_start  = -0.20
-    row_gap  = 0.10
-    ann_col  = "#374151"
+    y_start = -0.20
+    row_gap = 0.10
+    ann_col = "#374151"
+    SYM_COLORS = {
+        # People charts
+        "■ Ext. Audit %":      ("■", "#B8CDD9", "Ext. Audit %"),
+        "■ Int. Audit %":      ("■", "#F5A623", "Int. Audit %"),
+        "■ Women Emp. %":      ("■", "#B8CDD9", "Women Emp. %"),
+        "■ Women Board %":     ("■", "#F5A623", "Women Board %"),
+        # Waste chart
+        "■ Recovered (T)":     ("■", "#7BAF74", "Recovered (T)"),
+        "■ Disposed (T)":      ("■", "#2D4A5A", "Disposed (T)"),
+        "— Recovery %":        ("—", "#F5A623", "Recovery %"),
+        # Water chart
+        "■ Withdrawals (Mm³)": ("■", "#B8CDD9", "Withdrawals (Mm³)"),
+        "— Intensity (m³/t)":  ("—", "#2D4A5A", "Intensity (m³/t)"),
+        # CO2 chart
+        "■ Scope 1 (tCO₂)":   ("■", "#465c66", "Scope 1 (tCO₂)"),
+        "■ Scope 2 (tCO₂)":   ("■", "#B8CDD9", "Scope 2 (tCO₂)"),
+        "— Intensity (t/t)":  ("—", "#cab6a5", "Intensity (t/t)"),
+    }
+    # Symbol is right-anchored at sym_x; label text left-anchored at sym_x + gap
+    # gap ≈ width of one symbol char in paper units (small, so they sit tight)
+    gap = 0.012
     for i, (lbl, vals, fmt) in enumerate(rows):
         y_pos = y_start - i * row_gap
-        fig.add_annotation(
-            text=lbl, xref="paper", yref="paper",
-            x=-0.01, y=y_pos, xanchor="right", yanchor="middle",
-            showarrow=False, font=dict(size=8.5, color=ann_col, family=FONT_FAM),
-        )
+        if lbl in SYM_COLORS:
+            sym, sym_col, txt = SYM_COLORS[lbl]
+            fig.add_annotation(
+                text=sym, xref="paper", yref="paper",
+                x=sym_x, y=y_pos, xanchor="right", yanchor="middle",
+                showarrow=False, font=dict(size=10, color=sym_col, family=FONT_FAM),
+            )
+            fig.add_annotation(
+                text=txt, xref="paper", yref="paper",
+                x=sym_x + gap, y=y_pos, xanchor="left", yanchor="middle",
+                showarrow=False, font=dict(size=8.5, color=ann_col, family=FONT_FAM),
+            )
+        else:
+            fig.add_annotation(
+                text=lbl, xref="paper", yref="paper",
+                x=sym_x, y=y_pos, xanchor="right", yanchor="middle",
+                showarrow=False, font=dict(size=8.5, color=ann_col, family=FONT_FAM),
+            )
         for x, v in zip(xs, vals):
             if v is not None:
                 fig.add_annotation(
@@ -163,8 +194,6 @@ def _annot_below(fig, xs, rows):
                     x=x, y=y_pos, xanchor="center", yanchor="middle",
                     showarrow=False, font=dict(size=8.5, color=ann_col, family=FONT_FAM),
                 )
-
-
 def page_home():
     """
     Client Home — Hero banner, KPI cards (cur vs prev year), trend charts with values.
@@ -470,6 +499,53 @@ def page_home():
         o  = calc(TI(company=company, year=y, **sc))
         ii = TI(company=company, year=y, **sc)
         rt = max(ii.renew_elec_purchased + ii.nonrenew_elec_purchased + ii.self_gen_elec, 1)
+        
+        # Calculate People & Governance percentages from the consolidated
+        # master dataframe — same source & column names as My Dashboard's
+        # H&S/People charts (page_my_dashboard.py), which populate correctly.
+        # NOTE: _load_supplementary() does NOT carry these fields (it uses a
+        # different schema), which is why these cards used to show "No data".
+        def _master_col(col):
+            if state.CONSOLIDATED_DF.empty or "Company" not in state.CONSOLIDATED_DF.columns:
+                return None
+            row = state.CONSOLIDATED_DF[
+                (state.CONSOLIDATED_DF["Company"] == company) &
+                (state.CONSOLIDATED_DF["Year"] == y)
+            ]
+            if row.empty or col not in row.columns:
+                return None
+            v = row[col].values[0]
+            return float(v) if pd.notna(v) else None
+
+        def _ratio_pct(num, den):
+            if num is None or den is None or den <= 0:
+                return None
+            return round(num / den * 100, 1)
+
+        total_sites_y = _master_col("Total no. of sites")
+
+        hs_ext_pct = _master_col("HS External Audit %")
+        if hs_ext_pct is None:
+            hs_ext_pct = _ratio_pct(_master_col("HS External Audit Sites"), total_sites_y)
+
+        hs_int_pct = _master_col("HS Internal Audit %")
+        if hs_int_pct is None:
+            hs_int_pct = _ratio_pct(_master_col("HS Internal Audit Sites"), total_sites_y)
+
+        fem_emp_pct = _master_col("Female Employees %")
+        if fem_emp_pct is None:
+            fem_emp_pct = _ratio_pct(_master_col("Female Employees"), _master_col("Total Employees"))
+
+        fem_bod_pct = _master_col("Female Board %")
+        if fem_bod_pct is None:
+            fem_bod_pct = _ratio_pct(_master_col("Female Board"), _master_col("Board Total"))
+
+        # Treat 0 the same as "not reported" (matches My Dashboard behaviour)
+        if hs_ext_pct == 0:  hs_ext_pct  = None
+        if hs_int_pct == 0:  hs_int_pct  = None
+        if fem_emp_pct == 0: fem_emp_pct = None
+        if fem_bod_pct == 0: fem_bod_pct = None
+        
         yr_kpis[y] = {
             "scope1": o.total_co2_scope1, "scope2": o.total_co2_scope2,
             "total_co2": o.total_co2, "co2_kpi": o.co2_kpi,
@@ -484,11 +560,11 @@ def page_home():
             "water_m3": ii.water_withdrawals, "production": ii.production,
             "waste_total":    sd.get("waste_total",    0),
             "waste_recovery": sd.get("waste_recovery", 0),
-            # People & governance
-            "hs_ext_pct": sd.get("hs_ext_audit_pct",  None),
-            "hs_int_pct": sd.get("hs_int_audit_pct",  None),
-            "fem_emp_pct": sd.get("female_emp_pct",   None),
-            "fem_bod_pct": sd.get("female_board_pct", None),
+            # People & governance — calculated percentages
+            "hs_ext_pct": hs_ext_pct,
+            "hs_int_pct": hs_int_pct,
+            "fem_emp_pct": fem_emp_pct,
+            "fem_bod_pct": fem_bod_pct,
         }
 
     ys     = [y for y in years if yr_kpis.get(y, {}).get("production", 0) > 0]
@@ -507,108 +583,36 @@ def page_home():
 
     # ── TAB 1: ENERGY ─────────────────────────────────────────────────────────
     with t_energy:
-        c1, c2 = st.columns(2, gap="medium")
-
-        # Left: Total energy + intensity dual-axis
-        with c1:
-            en_vals  = [yr_kpis[y]["energy_total"] / 1e6 for y in ys]   # PJ-scale for readability
-            en_kpi   = [yr_kpis[y]["energy_kpi"]          for y in ys]
-
-            fig_en = go.Figure()
-            fig_en.add_trace(go.Bar(
-                x=xi, y=en_vals, name="Total Energy",
-                marker_color=BAR_BLUE, marker_line_width=0, width=0.6,
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Energy: %{y:,.1f} PJ<extra></extra>",
-                text=[f"{v:.1f}" for v in en_vals],
-                textposition="inside",
-                textfont=dict(size=8, color="white", family=FONT_FAM),
-            ))
-            fig_en.add_trace(go.Scatter(
-                x=xi, y=en_kpi, name="Energy Intensity (GJ/t)",
-                yaxis="y2", mode="lines",
-                line=dict(color=LINE_AMBER, width=2.2),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Intensity: %{y:.2f} GJ/t<extra></extra>",
-            ))
-            lay = _chart_base("Total Energy Consumption", height=360, bottom=130)
-            lay["xaxis"]["tickvals"] = xi
-            lay["xaxis"]["ticktext"] = ys_str
-            lay["yaxis"]["title"] = dict(text="Total Energy (PJ)", font=dict(size=11, color=AXIS_COL))
-            lay["yaxis2"] = dict(
-                title=dict(text="Energy Intensity (GJ/t)", font=dict(size=11, color=LINE_AMBER)),
-                overlaying="y", side="right", tickformat=".2f",
-                showgrid=False, showline=True, linecolor=AXIS_LINE,
-                tickfont=dict(size=11, color=LINE_AMBER),
-            )
-            lay["margin"] = dict(l=60, r=70, t=50, b=130)
-            fig_en.update_layout(**lay)
-            _annot_below(fig_en, xi, [
-                ("Total Energy (PJ)", en_vals, "{:.2f}"),
-                ("Intensity (GJ/t)",  en_kpi,  "{:.2f}"),
-            ])
-            apply_chart_animation(fig_en)
-            st.plotly_chart(fig_en, use_container_width=True)
-
-        # Right: Energy mix stacked bar
-        with c2:
-            fuel_cfg = [
-                ("Renewable Elec.",  [yr_kpis[y]["renew_elec"]    / 1e3 for y in ys], "#7BAF74"),
-                ("Non-Renew. Elec.", [yr_kpis[y]["nonrenew_elec"] / 1e3 for y in ys], "#B8CDD9"),
-                ("Natural Gas",      [yr_kpis[y]["nat_gas"]        / 1e3 for y in ys], "#C8B49A"),
-                ("Coal",             [yr_kpis[y]["coal"]           / 1e3 for y in ys], "#2D4A5A"),
-                ("Diesel",           [yr_kpis[y]["diesel"]         / 1e3 for y in ys], "#E0935A"),
-                ("Biomass",          [yr_kpis[y]["biomass"]        / 1e3 for y in ys], "#9FB8C5"),
-            ]
-            fig_mix = go.Figure()
-            for label, vals, color in fuel_cfg:
-                if any(v > 0 for v in vals):
-                    fig_mix.add_trace(go.Bar(
-                        name=label, x=xi, y=vals,
-                        marker_color=color, marker_line_width=0, width=0.6,
-                        customdata=ys_str,
-                        hovertemplate=f"<b>%{{customdata}}</b> · {label}<br>%{{y:,.1f}} TJ<extra></extra>",
-                    ))
-            lay2 = _chart_base("Energy Mix by Source", height=360, bottom=130)
-            lay2["xaxis"]["tickvals"] = xi
-            lay2["xaxis"]["ticktext"] = ys_str
-            lay2["yaxis"]["title"] = dict(text="Energy (TJ)", font=dict(size=11, color=AXIS_COL))
-            lay2["margin"] = dict(l=60, r=40, t=50, b=130)
-            fig_mix.update_layout(**lay2, barmode="stack")
-            apply_chart_animation(fig_mix)
-            st.plotly_chart(fig_mix, use_container_width=True)
-
-        # Bottom: Renewable % stacked 100%
-        c3, _ = st.columns(2, gap="medium")
-        with c3:
-            renew_vals    = [yr_kpis[y]["renew_pct"]        for y in ys]
-            nonrenew_vals = [100 - v                          for v in renew_vals]
-            fig_ren = go.Figure()
-            fig_ren.add_trace(go.Bar(
-                x=xi, y=nonrenew_vals, name="Non-Renewable Electricity",
-                marker_color="#D4A574", marker_line_width=0, width=0.6,
-                text=[f"{v:.1f}%" for v in nonrenew_vals],
-                textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Non-Renewable: %{y:.1f}%<extra></extra>",
-            ))
-            fig_ren.add_trace(go.Bar(
-                x=xi, y=renew_vals, name="Renewable Electricity",
-                marker_color="#3DBDB5", marker_line_width=0, width=0.6,
-                text=[f"{v:.1f}%" for v in renew_vals],
-                textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Renewable: %{y:.1f}%<extra></extra>",
-            ))
-            lay3 = _chart_base("Electricity from Renewable Sources (%)", height=300, bottom=55)
-            lay3["xaxis"]["tickvals"] = xi
-            lay3["xaxis"]["ticktext"] = ys_str
-            lay3["yaxis"].update(range=[0, 100], ticksuffix="%",
-                                 title=dict(text="Electricity (%)", font=dict(size=11, color=AXIS_COL)))
-            lay3["margin"] = dict(l=60, r=40, t=50, b=80)
-            fig_ren.update_layout(**lay3, barmode="stack")
-            apply_chart_animation(fig_ren)
-            st.plotly_chart(fig_ren, use_container_width=True)
+        # Single full-width Energy Mix graph with all fuel sources stacked
+        fuel_cfg = [
+            ("Renewable Elec.",  [yr_kpis[y]["renew_elec"]    / 1e3 for y in ys], "#7BAF74"),
+            ("Non-Renew. Elec.", [yr_kpis[y]["nonrenew_elec"] / 1e3 for y in ys], "#B8CDD9"),
+            ("Natural Gas",      [yr_kpis[y]["nat_gas"]        / 1e3 for y in ys], "#C8B49A"),
+            ("Coal",             [yr_kpis[y]["coal"]           / 1e3 for y in ys], "#2D4A5A"),
+            ("Diesel",           [yr_kpis[y]["diesel"]         / 1e3 for y in ys], "#E0935A"),
+            ("Biomass",          [yr_kpis[y]["biomass"]        / 1e3 for y in ys], "#9FB8C5"),
+        ]
+        fig_energy = go.Figure()
+        for label, vals, color in fuel_cfg:
+            if any(v > 0 for v in vals):
+                fig_energy.add_trace(go.Bar(
+                    name=label, x=xi, y=vals,
+                    marker_color=color, marker_line_width=0, width=0.65,
+                    text=[f"{v:,.0f}" if v > 0 else "" for v in vals],
+                    textposition="inside",
+                    textfont=dict(size=9, color="white", family=FONT_FAM, weight="bold"),
+                    customdata=ys_str,
+                    hovertemplate=f"<b>%{{customdata}}</b> · {label}<br>%{{y:,.1f}} TJ<extra></extra>",
+                ))
+        lay_energy = _chart_base("Energy Mix by Source (TJ)", height=380, bottom=55)
+        lay_energy["xaxis"]["tickvals"] = xi
+        lay_energy["xaxis"]["ticktext"] = ys_str
+        lay_energy["yaxis"]["title"] = dict(text="Energy (TJ)", font=dict(size=11, color=AXIS_COL))
+        lay_energy["margin"] = dict(l=60, r=40, t=50, b=55)
+        lay_energy["showlegend"] = True
+        fig_energy.update_layout(**lay_energy, barmode="stack")
+        apply_chart_animation(fig_energy)
+        st.plotly_chart(fig_energy, use_container_width=True)
 
     # ── TAB 2: CO₂ EMISSIONS ──────────────────────────────────────────────────
     with t_co2:
@@ -620,18 +624,20 @@ def page_home():
         fig_co2.add_trace(go.Bar(
             x=xi, y=scope2, name="Scope 2 (indirect)",
             marker_color="rgba(185,200,212,0.88)", marker_line_width=0, width=0.62,
-            text=[f"{v/1e3:.0f}k" if v else "" for v in scope2],
-            textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
+            text=None,  # No text inside bars to avoid overlap
+            textposition="none",
             customdata=ys_str,
             hovertemplate="<b>%{customdata}</b> · Scope 2<br>%{y:,.0f} tCO₂<extra></extra>",
+            showlegend=False,
         ))
         fig_co2.add_trace(go.Bar(
             x=xi, y=scope1, name="Scope 1 (direct)",
             marker_color="rgba(70,92,102,0.88)", marker_line_width=0, width=0.62,
-            text=[f"{v/1e3:.0f}k" if v else "" for v in scope1],
-            textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
+            text=None,  # No text inside bars to avoid overlap
+            textposition="none",
             customdata=ys_str,
             hovertemplate="<b>%{customdata}</b> · Scope 1<br>%{y:,.0f} tCO₂<extra></extra>",
+            showlegend=False,
         ))
         fig_co2.add_trace(go.Scatter(
             x=xi, y=co2kpi, name="CO₂ Intensity (t/t)",
@@ -639,6 +645,7 @@ def page_home():
             line=dict(color="#cab6a5", width=2.2),
             customdata=ys_str,
             hovertemplate="<b>%{customdata}</b><br>Intensity: %{y:.3f} t/t<extra></extra>",
+            showlegend=False,
         ))
         # Best-intensity annotation
         if len(ys) >= 2:
@@ -660,61 +667,67 @@ def page_home():
             overlaying="y", side="right", tickformat=".3f",
             showgrid=False, showline=True, linecolor=AXIS_LINE,
             tickfont=dict(size=11, color=AXIS_COL),
+            automargin=True,
         )
         lay_co2["barmode"] = "stack"
-        lay_co2["margin"] = dict(l=60, r=80, t=50, b=140)
+        lay_co2["margin"] = dict(l=110, r=80, t=50, b=140)
+        lay_co2["showlegend"] = False  # Hide legend entirely
         fig_co2.update_layout(**lay_co2)
+        
+        # Add values below with custom legend symbols (no legend box)
         _annot_below(fig_co2, xi, [
-            ("Scope 1 (tCO₂)", scope1, "{:,.0f}"),
-            ("Scope 2 (tCO₂)", scope2, "{:,.0f}"),
-            ("Intensity (t/t)", co2kpi, "{:.3f}"),
-        ])
+            ("■ Scope 1 (tCO₂)", scope1, "{:,.0f}"),
+            ("■ Scope 2 (tCO₂)", scope2, "{:,.0f}"),
+            ("— Intensity (t/t)",   co2kpi, "{:.3f}"),
+        ], sym_x=-0.06)
         apply_chart_animation(fig_co2)
         st.plotly_chart(fig_co2, use_container_width=True)
 
     # ── TAB 3: WATER ──────────────────────────────────────────────────────────
     with t_water:
-        c1, _ = st.columns(2, gap="medium")
-        with c1:
-            w_m3  = [yr_kpis[y]["water_m3"]  for y in ys]
-            w_kpi = [yr_kpis[y]["water_kpi"] for y in ys]
-            w_mm3 = [v / 1e6 for v in w_m3]   # million m³
+        w_m3  = [yr_kpis[y]["water_m3"]  for y in ys]
+        w_kpi = [yr_kpis[y]["water_kpi"] for y in ys]
+        w_mm3 = [v / 1e6 for v in w_m3]   # million m³
 
-            fig_water = go.Figure()
-            fig_water.add_trace(go.Bar(
-                x=xi, y=w_mm3, name="Total Withdrawals",
-                marker_color=BAR_BLUE, marker_line_width=0, width=0.62,
-                text=[f"{v:.1f}" for v in w_mm3],
-                textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>%{y:,.1f} Mm³<extra></extra>",
-            ))
-            fig_water.add_trace(go.Scatter(
-                x=xi, y=w_kpi, name="Intensity (m³/t)",
-                yaxis="y2", mode="lines",
-                line=dict(color=LINE_DARK, width=2.2),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Intensity: %{y:.2f} m³/t<extra></extra>",
-            ))
-            lay_w = _chart_base("Water Withdrawals & Intensity", height=380, bottom=120)
-            lay_w["xaxis"]["tickvals"] = xi
-            lay_w["xaxis"]["ticktext"] = ys_str
-            lay_w["yaxis"]["title"] = dict(text="Total Withdrawals (Million m³)", font=dict(size=11, color=AXIS_COL))
-            lay_w["yaxis"]["tickformat"] = ".1f"
-            lay_w["yaxis2"] = dict(
-                title=dict(text="Water Intensity (m³/t)", font=dict(size=11, color=LINE_DARK)),
-                overlaying="y", side="right", tickformat=".2f",
-                showgrid=False, showline=True, linecolor=AXIS_LINE,
-                tickfont=dict(size=11, color=LINE_DARK),
-            )
-            lay_w["margin"] = dict(l=60, r=80, t=50, b=120)
-            fig_water.update_layout(**lay_w)
-            _annot_below(fig_water, xi, [
-                ("Withdrawals (Mm³)", w_mm3, "{:.1f}"),
-                ("Intensity (m³/t)", w_kpi,  "{:.2f}"),
-            ])
-            apply_chart_animation(fig_water)
-            st.plotly_chart(fig_water, use_container_width=True)
+        fig_water = go.Figure()
+        fig_water.add_trace(go.Bar(
+            x=xi, y=w_mm3, name="Total Withdrawals",
+            marker_color=BAR_BLUE, marker_line_width=0, width=0.62,
+            text=None,  # No text inside bars
+            textposition="none",
+            customdata=ys_str,
+            hovertemplate="<b>%{customdata}</b><br>%{y:,.1f} Mm³<extra></extra>",
+            showlegend=False,
+        ))
+        fig_water.add_trace(go.Scatter(
+            x=xi, y=w_kpi, name="Intensity (m³/t)",
+            yaxis="y2", mode="lines",
+            line=dict(color=LINE_DARK, width=2.2),
+            customdata=ys_str,
+            hovertemplate="<b>%{customdata}</b><br>Intensity: %{y:.2f} m³/t<extra></extra>",
+            showlegend=False,
+        ))
+        lay_w = _chart_base("Water Withdrawals & Intensity", height=380, bottom=140)
+        lay_w["xaxis"]["tickvals"] = xi
+        lay_w["xaxis"]["ticktext"] = ys_str
+        lay_w["yaxis"]["title"] = dict(text="Total Withdrawals (Million m³)", font=dict(size=11, color=AXIS_COL))
+        lay_w["yaxis"]["tickformat"] = ".1f"
+        lay_w["yaxis2"] = dict(
+            title=dict(text="Water Intensity (m³/t)", font=dict(size=11, color=LINE_DARK)),
+            overlaying="y", side="right", tickformat=".2f",
+            showgrid=False, showline=True, linecolor=AXIS_LINE,
+            tickfont=dict(size=11, color=LINE_DARK),
+            automargin=True,
+        )
+        lay_w["margin"] = dict(l=110, r=90, t=50, b=140)
+        lay_w["showlegend"] = False  # Hide legend
+        fig_water.update_layout(**lay_w)
+        _annot_below(fig_water, xi, [
+            ("■ Withdrawals (Mm³)", w_mm3, "{:.1f}"),
+            ("— Intensity (m³/t)",  w_kpi,  "{:.2f}"),
+        ], sym_x=-0.06)
+        apply_chart_animation(fig_water)
+        st.plotly_chart(fig_water, use_container_width=True)
 
     # ── TAB 4: WASTE & FUEL ───────────────────────────────────────────────────
     with t_waste:
@@ -723,120 +736,57 @@ def page_home():
         w_pcts     = [yr_kpis[y]["waste_pct"]      for y in ys]
         w_elim     = [max(t - r, 0) for t, r in zip(w_total, w_recovery)]
 
-        c1, c2 = st.columns(2, gap="medium")
-
-        # Left: Waste total (stacked: recovered + eliminated) with recovery % line
-        with c1:
-            fig_waste = go.Figure()
-            fig_waste.add_trace(go.Bar(
-                x=xi, y=w_recovery, name="Recovered",
-                marker_color=BAR_GREEN, marker_line_width=0, width=0.6,
-                text=[f"{v:,.0f}" if v else "" for v in w_recovery],
-                textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Recovered: %{y:,.0f} T<extra></extra>",
-            ))
-            fig_waste.add_trace(go.Bar(
-                x=xi, y=w_elim, name="Eliminated/Disposed",
-                marker_color="#2D4A5A", marker_line_width=0, width=0.6,
-                text=[f"{v:,.0f}" if v else "" for v in w_elim],
-                textposition="inside", textfont=dict(size=8, color="white", family=FONT_FAM),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Disposed: %{y:,.0f} T<extra></extra>",
-            ))
-            fig_waste.add_trace(go.Scatter(
-                x=xi, y=w_pcts, name="Recovery %",
-                yaxis="y2", mode="lines",
-                line=dict(color=LINE_AMBER, width=2.2),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Recovery: %{y:.1f}%<extra></extra>",
-            ))
-            lay_wst = _chart_base("Waste: Recovery vs Disposal (T)", height=380, bottom=130)
-            lay_wst["xaxis"]["tickvals"] = xi
-            lay_wst["xaxis"]["ticktext"] = ys_str
-            lay_wst["yaxis"]["title"] = dict(text="Waste (Metric T)", font=dict(size=11, color=AXIS_COL))
-            lay_wst["yaxis"]["tickformat"] = ","
-            lay_wst["yaxis2"] = dict(
-                title=dict(text="Recovery %", font=dict(size=11, color=LINE_AMBER)),
-                overlaying="y", side="right", range=[0, 110], ticksuffix="%",
-                showgrid=False, showline=True, linecolor=AXIS_LINE,
-                tickfont=dict(size=11, color=LINE_AMBER),
-            )
-            lay_wst["barmode"] = "stack"
-            lay_wst["margin"]  = dict(l=60, r=80, t=50, b=130)
-            fig_waste.update_layout(**lay_wst)
-            _annot_below(fig_waste, xi, [
-                ("Recovered (T)",  w_recovery, "{:,.0f}"),
-                ("Disposed (T)",   w_elim,     "{:,.0f}"),
-                ("Recovery %",     w_pcts,     "{:.1f}%"),
-            ])
-            apply_chart_animation(fig_waste)
-            st.plotly_chart(fig_waste, use_container_width=True)
-
-        # Right: Recovery % trend with colour bands
-        with c2:
-            fig_rec = go.Figure()
-            fig_rec.add_hrect(y0=0,  y1=70,  fillcolor="#FEE2E2", opacity=0.25, line_width=0)
-            fig_rec.add_hrect(y0=70, y1=85,  fillcolor="#FEF3C7", opacity=0.25, line_width=0)
-            fig_rec.add_hrect(y0=85, y1=100, fillcolor="#DCFCE7", opacity=0.25, line_width=0)
-            fig_rec.add_hline(y=90, line_dash="dot", line_color=GREEN, line_width=1.5,
-                              annotation_text="Target 90%",
-                              annotation_font=dict(size=9, color=GREEN))
-            fig_rec.add_trace(go.Scatter(
-                x=xi, y=w_pcts, name="Recovery %",
-                mode="lines+markers",
-                fill="tozeroy", fillcolor="rgba(123,175,116,0.12)",
-                line=dict(color="#465c66", width=2.2),
-                marker=dict(size=7, color="#f5f4f2",
-                            line=dict(color="#465c66", width=2)),
-                customdata=ys_str,
-                hovertemplate="<b>%{customdata}</b><br>Recovery: %{y:.1f}%<extra></extra>",
-            ))
-            # Annotate each point
-            for x, y in zip(xi, w_pcts):
-                if y:
-                    fig_rec.add_annotation(
-                        x=x, y=y + 3, text=f"{y:.1f}%",
-                        showarrow=False,
-                        font=dict(size=8, color="#465c66", family=FONT_FAM),
-                    )
-            lay_rec = _chart_base("Waste Recovery Rate (%)", height=380, bottom=55)
-            lay_rec["xaxis"]["tickvals"] = xi
-            lay_rec["xaxis"]["ticktext"] = ys_str
-            lay_rec["yaxis"].update(range=[0, 105], ticksuffix="%",
-                                    title=dict(text="Recovery %", font=dict(size=11, color=AXIS_COL)))
-            lay_rec["showlegend"] = False
-            lay_rec["margin"] = dict(l=60, r=40, t=50, b=55)
-            fig_rec.update_layout(**lay_rec)
-            apply_chart_animation(fig_rec)
-            st.plotly_chart(fig_rec, use_container_width=True)
-
-        # Bottom row: Fuel mix (from yr_kpis) full-width
-        fuel_cfg2 = [
-            ("Renewable Elec.",  [yr_kpis[y]["renew_elec"]    / 1e3 for y in ys], "#7BAF74"),
-            ("Non-Renew. Elec.", [yr_kpis[y]["nonrenew_elec"] / 1e3 for y in ys], "#B8CDD9"),
-            ("Natural Gas",      [yr_kpis[y]["nat_gas"]        / 1e3 for y in ys], "#C8B49A"),
-            ("Coal",             [yr_kpis[y]["coal"]           / 1e3 for y in ys], "#2D4A5A"),
-            ("Diesel",           [yr_kpis[y]["diesel"]         / 1e3 for y in ys], "#E0935A"),
-            ("Biomass",          [yr_kpis[y]["biomass"]        / 1e3 for y in ys], "#9FB8C5"),
-        ]
-        fig_fuel = go.Figure()
-        for label, vals, color in fuel_cfg2:
-            if any(v > 0 for v in vals):
-                fig_fuel.add_trace(go.Bar(
-                    name=label, x=xi, y=vals,
-                    marker_color=color, marker_line_width=0, width=0.6,
-                    customdata=ys_str,
-                    hovertemplate=f"<b>%{{customdata}}</b> · {label}<br>%{{y:,.1f}} TJ<extra></extra>",
-                ))
-        lay_fuel = _chart_base("Fuel & Energy Mix by Source (TJ)", height=300, bottom=55)
-        lay_fuel["xaxis"]["tickvals"] = xi
-        lay_fuel["xaxis"]["ticktext"] = ys_str
-        lay_fuel["yaxis"]["title"] = dict(text="Energy (TJ)", font=dict(size=11, color=AXIS_COL))
-        lay_fuel["margin"] = dict(l=60, r=40, t=50, b=80)
-        fig_fuel.update_layout(**lay_fuel, barmode="stack")
-        apply_chart_animation(fig_fuel)
-        st.plotly_chart(fig_fuel, use_container_width=True)
+        # Full-width Waste Recovery vs Disposal graph
+        fig_waste = go.Figure()
+        fig_waste.add_trace(go.Bar(
+            x=xi, y=w_recovery, name="Recovered",
+            marker_color=BAR_GREEN, marker_line_width=0, width=0.6,
+            text=None,  # No text inside
+            textposition="none",
+            customdata=ys_str,
+            hovertemplate="<b>%{customdata}</b><br>Recovered: %{y:,.0f} T<extra></extra>",
+            showlegend=False,
+        ))
+        fig_waste.add_trace(go.Bar(
+            x=xi, y=w_elim, name="Eliminated/Disposed",
+            marker_color="#2D4A5A", marker_line_width=0, width=0.6,
+            text=None,  # No text inside
+            textposition="none",
+            customdata=ys_str,
+            hovertemplate="<b>%{customdata}</b><br>Disposed: %{y:,.0f} T<extra></extra>",
+            showlegend=False,
+        ))
+        fig_waste.add_trace(go.Scatter(
+            x=xi, y=w_pcts, name="Recovery %",
+            yaxis="y2", mode="lines",
+            line=dict(color=LINE_AMBER, width=2.2),
+            customdata=ys_str,
+            hovertemplate="<b>%{customdata}</b><br>Recovery: %{y:.1f}%<extra></extra>",
+            showlegend=False,
+        ))
+        lay_wst = _chart_base("Waste: Recovery vs Disposal (T)", height=380, bottom=140)
+        lay_wst["xaxis"]["tickvals"] = xi
+        lay_wst["xaxis"]["ticktext"] = ys_str
+        lay_wst["yaxis"]["title"] = dict(text="Waste (Metric T)", font=dict(size=11, color=AXIS_COL))
+        lay_wst["yaxis"]["tickformat"] = ","
+        lay_wst["yaxis2"] = dict(
+            title=dict(text="Recovery %", font=dict(size=11, color=LINE_AMBER)),
+            overlaying="y", side="right", range=[0, 110], ticksuffix="%",
+            showgrid=False, showline=True, linecolor=AXIS_LINE,
+            tickfont=dict(size=11, color=LINE_AMBER),
+            automargin=True,
+        )
+        lay_wst["barmode"] = "stack"
+        lay_wst["margin"]  = dict(l=110, r=80, t=50, b=140)
+        lay_wst["showlegend"] = False
+        fig_waste.update_layout(**lay_wst)
+        _annot_below(fig_waste, xi, [
+            ("■ Recovered (T)",  w_recovery, "{:,.0f}"),
+            ("■ Disposed (T)",   w_elim,     "{:,.0f}"),
+            ("— Recovery %",     w_pcts,     "{:.1f}%"),
+        ], sym_x=-0.06)
+        apply_chart_animation(fig_waste)
+        st.plotly_chart(fig_waste, use_container_width=True)
 
     # ── TAB 5: PEOPLE & GOVERNANCE ─────────────────────────────────────────────
     with t_people:
@@ -880,17 +830,18 @@ def page_home():
                     customdata=ys_str,
                     hovertemplate="<b>%{customdata}</b><br>Int. audited: %{y:.0f}%<extra></extra>",
                 ))
-                lay_hs = _chart_base("H&S Audited Sites Evolution (%)", height=380, bottom=80)
+                lay_hs = _chart_base("H&S Audited Sites Evolution (%)", height=400, bottom=110)
                 lay_hs["xaxis"]["tickvals"] = xi
                 lay_hs["xaxis"]["ticktext"] = ys_str
                 lay_hs["yaxis"].update(range=[0, 105], ticksuffix="%",
                                        title=dict(text="% Sites Audited", font=dict(size=11, color=AXIS_COL)))
-                lay_hs["margin"] = dict(l=60, r=40, t=50, b=100)
+                lay_hs["margin"] = dict(l=110, r=40, t=50, b=110)
+                lay_hs["showlegend"] = False
                 fig_hs.update_layout(**lay_hs)
                 _annot_below(fig_hs, xi, [
-                    ("Ext. Audit %", hs_ext_clean, "{:.0f}%"),
-                    ("Int. Audit %", hs_int_clean, "{:.0f}%"),
-                ])
+                    ("■ Ext. Audit %", hs_ext_clean, "{:.0f}%"),
+                    ("■ Int. Audit %", hs_int_clean, "{:.0f}%"),
+                ], sym_x=-0.14)
                 apply_chart_animation(fig_hs)
                 st.plotly_chart(fig_hs, use_container_width=True)
 
@@ -925,17 +876,18 @@ def page_home():
                     customdata=ys_str,
                     hovertemplate="<b>%{customdata}</b><br>Women on Board: %{y:.0f}%<extra></extra>",
                 ))
-                lay_ppl = _chart_base("Female Representation (%)", height=380, bottom=80)
+                lay_ppl = _chart_base("Female Representation (%)", height=400, bottom=110)
                 lay_ppl["xaxis"]["tickvals"] = xi
                 lay_ppl["xaxis"]["ticktext"] = ys_str
                 lay_ppl["yaxis"].update(range=[0, _y_max], ticksuffix="%",
                                         title=dict(text="Female Representation (%)", font=dict(size=11, color=AXIS_COL)))
-                lay_ppl["margin"] = dict(l=60, r=40, t=50, b=100)
+                lay_ppl["margin"] = dict(l=110, r=40, t=50, b=110)
+                lay_ppl["showlegend"] = False
                 fig_ppl.update_layout(**lay_ppl)
                 _annot_below(fig_ppl, xi, [
-                    ("Women Emp. %", fem_emp_clean, "{:.0f}%"),
-                    ("Women Board %", fem_bod_clean, "{:.0f}%"),
-                ])
+                    ("■ Women Emp. %",  fem_emp_clean, "{:.0f}%"),
+                    ("■ Women Board %", fem_bod_clean, "{:.0f}%"),
+                ], sym_x=-0.14)
                 apply_chart_animation(fig_ppl)
                 st.plotly_chart(fig_ppl, use_container_width=True)
 
