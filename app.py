@@ -883,7 +883,7 @@ def show_login():
     </div>""", unsafe_allow_html=True)
 
     # ── Role tabs ─────────────────────────────────────────────────────────────
-    role = st.radio("", ["TIP Client Company", "dss+ Analyst"],
+    role = st.radio("Select your role", ["TIP Client Company", "dss+ Analyst"],
                     horizontal=True, key="login_role",
                     label_visibility="collapsed")
     st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)

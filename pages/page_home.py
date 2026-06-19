@@ -79,7 +79,7 @@ def page_home():
         ), unsafe_allow_html=True)
     with h_mid:
         if years:
-            sel_yr = st.selectbox("", sorted(years, reverse=True),
+            sel_yr = st.selectbox("Year", sorted(years, reverse=True),
                                   key="home_yr", label_visibility="collapsed")
         else:
             sel_yr = state.CURR_YEAR
@@ -499,7 +499,7 @@ def page_home():
 
     import pandas as pd
     tbl_rows = []
-    table_years = sorted([y for y in years if 2014 <= y <= 2023], reverse=True)
+    table_years = sorted([y for y in years if y >= 2014], reverse=True)
     for y in table_years:
         sd = dl.get_step_data(comp_hist, y)
         sc = {k: v for k, v in sd.items() if k in valid}
